@@ -65,6 +65,7 @@ if result:
 return redirect(result[0])
 return 'URL not found', 404
 
-if name == 'main':
-app.run(debug=True)
-لماذا
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 8888))
+    app.run(host="0.0.0.0", port=port)
