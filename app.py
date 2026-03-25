@@ -1,16 +1,16 @@
-# Install required packages
-!pip install flask flask-ngrok
-
 from flask import Flask, request, redirect, render_template_string
-from flask_ngrok import run_with_ngrok
-import random, string, sqlite3
+import random
+import string
+import sqlite3
+import os
 
 app = Flask(__name__)
-run_with_ngrok(app)  # Important for Binder
 
-# Create database
-conn = sqlite3.connect("urls.db", check_same_thread=False)
+# ------------------ Database ------------------
+DB_NAME = "urls.db"
+conn = sqlite3.connect(DB_NAME, check_same_thread=False)
 c = conn.cursor()
+
 c.execute("""
 CREATE TABLE IF NOT EXISTS urls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,11 +20,11 @@ CREATE TABLE IF NOT EXISTS urls (
 """)
 conn.commit()
 
-# Generate short code
+# ------------------ Short code ------------------
 def generate_short_code(length=6):
     return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
 
-# Simple HTML template (no external file needed)
+# ------------------ HTML (no external files) ------------------
 HTML = """
 <!DOCTYPE html>
 <html>
@@ -33,6 +33,7 @@ HTML = """
 </head>
 <body>
     <h2>URL Shortener</h2>
+
     <form method="POST">
         <input type="text" name="long_url" placeholder="Enter URL" required>
         <button type="submit">Shorten</button>
@@ -45,33 +46,45 @@ HTML = """
 </html>
 """
 
-@app.route('/', methods=['GET','POST'])
+# ------------------ Routes ------------------
+@app.route("/", methods=["GET", "POST"])
 def home():
     short_url = None
 
-    if request.method == 'POST':
-        long_url = request.form['long_url']
+    if request.method == "POST":
+        long_url = request.form["long_url"].strip()
 
-        if not long_url.startswith(("http://","https://")):
+        if not long_url.startswith(("http://", "https://")):
             long_url = "http://" + long_url
 
         short_code = generate_short_code()
 
-        c.execute("INSERT INTO urls (short_code,long_url) VALUES (?,?)",
-                  (short_code,long_url))
-        conn.commit()
+        try:
+            c.execute(
+                "INSERT INTO urls (short_code, long_url) VALUES (?, ?)",
+                (short_code, long_url),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass
 
         short_url = request.host_url + short_code
 
     return render_template_string(HTML, short_url=short_url)
 
-@app.route('/<code>')
-def redirect_code(code):
-    c.execute("SELECT long_url FROM urls WHERE short_code=?",(code,))
-    r = c.fetchone()
-    if r:
-        return redirect(r[0])
-    return "Not found",404
+
+@app.route("/<short_code>")
+def redirect_short(short_code):
+    c.execute("SELECT long_url FROM urls WHERE short_code = ?", (short_code,))
+    result = c.fetchone()
+
+    if result:
+        return redirect(result[0])
+
+    return "URL not found", 404
 
 
-app.run()
+# ------------------ IMPORTANT FOR BINDER ------------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8888))
+    app.run(host="0.0.0.0", port=port)
